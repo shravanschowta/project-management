@@ -1,12 +1,12 @@
 import { Inngest } from "inngest";
+import prisma from "../configs/prisma.js";
 
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "project-management" });
 
 //ingest function to create user data in database
 const syncUserCreation=inngest.createFunction(
-    {id:'sync-user-from-clerk'},
-    {event:'clerk/user.created'},
+    {id:'sync-user-from-clerk', triggers: [{event:'clerk/user.created'}]},
     async({event})=>{
         const{data}=event;
         await prisma.user.create({
@@ -22,8 +22,7 @@ const syncUserCreation=inngest.createFunction(
 
 //user funtion to delete user data from database
 const syncUserDeletion=inngest.createFunction(
-    {id:'delete-user-with-clerk'},
-    {event:'clerk/user.deleted'},
+    {id:'delete-user-with-clerk', triggers: [{event:'clerk/user.deleted'}]},
     async({event})=>{
         const{data}=event;
         await prisma.user.delete({
@@ -36,8 +35,7 @@ const syncUserDeletion=inngest.createFunction(
 
 //update
 const syncUserUpdation=inngest.createFunction(
-    {id:'update-user-from-clerk'},
-    {event:'clerk/user.updated'},
+    {id:'update-user-from-clerk', triggers: [{event:'clerk/user.updated'}]},
     async({event})=>{
         const{data}=event;
         await prisma.user.update({

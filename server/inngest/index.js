@@ -4,56 +4,60 @@ import prisma from "../configs/prisma.js";
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "project-management" });
 
-//ingest function to create user data in database
-const syncUserCreation=inngest.createFunction(
-    {id:'sync-user-from-clerk', triggers: [{event:'clerk/user.created'}]},
-    async({event})=>{
-        const{data}=event;
-        await prisma.user.create({
-            data:{
-                id:data.id,
-                email:data?.email_addresses[0]?.email_address,
-                name:data?.first_name+" "+data?.last_name,
-                image:data?.image_url,
-            }
-        })
-    }
-)
+const userPayload = (data) => ({
+    id: data.id,
+    email: data?.email_addresses?.[0]?.email_address,
+    name: `${data?.first_name ?? ""} ${data?.last_name ?? ""}`.trim(),
+    image: data?.image_url ?? "",
+});
 
-//user funtion to delete user data from database
-const syncUserDeletion=inngest.createFunction(
-    {id:'delete-user-with-clerk', triggers: [{event:'clerk/user.deleted'}]},
-    async({event})=>{
-        const{data}=event;
-        await prisma.user.delete({
-            where:{
-                id:data.id,
-            }
-        })
-    }
-)
-
-//update
-const syncUserUpdation=inngest.createFunction(
-    {id:'update-user-from-clerk', triggers: [{event:'clerk/user.updated'}]},
-    async({event})=>{
-        const{data}=event;
-        await prisma.user.update({
-            where:{
-                id:data.id,
+// Upsert so retries / missed create events don't fail
+const syncUserCreation = inngest.createFunction(
+    { id: "sync-user-from-clerk", triggers: [{ event: "clerk/user.created" }] },
+    async ({ event }) => {
+        const data = userPayload(event.data);
+        await prisma.user.upsert({
+            where: { id: data.id },
+            create: data,
+            update: {
+                email: data.email,
+                name: data.name,
+                image: data.image,
             },
-            data:{
-                email:data?.email_addresses[0]?.email_address,
-                name:data?.first_name+" "+data?.last_name,
-                image:data?.image_url,
-            }
-        })
+        });
     }
-)
+);
 
-// Create an empty array where we'll export future Inngest functions
+// deleteMany does not throw when the user row is already gone
+const syncUserDeletion = inngest.createFunction(
+    { id: "delete-user-with-clerk", triggers: [{ event: "clerk/user.deleted" }] },
+    async ({ event }) => {
+        const { data } = event;
+        await prisma.user.deleteMany({
+            where: { id: data.id },
+        });
+    }
+);
+
+// Upsert so user.updated works even if user.created never ran
+const syncUserUpdation = inngest.createFunction(
+    { id: "update-user-from-clerk", triggers: [{ event: "clerk/user.updated" }] },
+    async ({ event }) => {
+        const data = userPayload(event.data);
+        await prisma.user.upsert({
+            where: { id: data.id },
+            create: data,
+            update: {
+                email: data.email,
+                name: data.name,
+                image: data.image,
+            },
+        });
+    }
+);
+
 export const functions = [
     syncUserCreation,
     syncUserDeletion,
-    syncUserUpdation
+    syncUserUpdation,
 ];
